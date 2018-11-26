@@ -39,8 +39,8 @@ public class Window : EditorWindow {
 
         if (e.type == EventType.MouseDown && e.button == 0 && isPainting){
             Vector3 mousePosition = e.mousePosition;
-            mousePosition.y = sv.camera.pixelHeight - mousePosition.y;
-            mousePosition.y = -mousePosition.y;
+            //mousePosition.y = sv.camera.pixelHeight - mousePosition.y;
+            //mousePosition.y = -mousePosition.y;
             mousePosition = sv.camera.ScreenToWorldPoint(e.mousePosition);
             mousePosition.z = 0;
 
