@@ -12,8 +12,10 @@ public class Window : EditorWindow {
     private string groupName;
     private GameObject parent;
     private bool isPainting;
+    private bool orientToSurface;
     private GUIStyle guiStyle = new GUIStyle();
-   
+    private UnityEngine.Object[] allPrefabs;
+    private Vector2 presetsScrollPos;
 
     // draw the window
     [MenuItem("Window/PrefabPainter")]
@@ -23,6 +25,8 @@ public class Window : EditorWindow {
 
     private void OnEnable()
     {
+        // load all prefabs in the window
+        allPrefabs = Resources.LoadAll("", typeof(GameObject));
         layerName = "Default";
         SceneView.onSceneGUIDelegate -= CustomeUpdate;
         SceneView.onSceneGUIDelegate += CustomeUpdate;
@@ -30,12 +34,24 @@ public class Window : EditorWindow {
 
     private void OnGUI()
     {
+        Event e = Event.current;
         // draw title
         guiStyle.fontSize = 20;
         guiStyle.alignment = TextAnchor.MiddleCenter;
         guiStyle.fontStyle = FontStyle.Bold;
         GUILayout.Label("Prefab Painter", guiStyle);
         GUILayout.Space(20);
+
+        // field for displaying all the prefabs in the project
+        EditorGUILayout.LabelField("Presets", EditorStyles.boldLabel);
+
+        GUILayout.BeginHorizontal();
+        for (int i = 0; i < allPrefabs.Length; i++){
+            GUILayout.Toggle(false, AssetPreview.GetAssetPreview(allPrefabs[i]), "button");
+
+            //EditorGUI.DrawPreviewTexture(new Rect(i*20, 10, 20,20), AssetPreview.GetAssetPreview(allPrefabs[i]));
+        }
+        GUILayout.EndHorizontal();
 
         // input field for setting the name of the painted prefab
         prefabName = EditorGUILayout.TextField("Prefab Name", prefabName);
@@ -56,10 +72,12 @@ public class Window : EditorWindow {
         GUILayout.Label("Parent");
         parent = (GameObject)EditorGUILayout.ObjectField(parent, typeof(GameObject), true);
         GUILayout.EndHorizontal();
-        GUILayout.Space(10);
+      
+        // check box for object orientation
+        //orientToSurface = EditorGUILayout.Toggle("Orient to Surface", orientToSurface);
+        //GUILayout.Space(10);
 
         // draw paint buttons
-        Event e = Event.current;
         GUILayout.BeginHorizontal();
         isPainting = GUILayout.Toggle(isPainting, "Paint", "button");
         isPainting &= (!GUILayout.Button("Cancel") && (!e.isKey || e.keyCode != KeyCode.Escape));
@@ -81,34 +99,36 @@ public class Window : EditorWindow {
     void CustomeUpdate(UnityEditor.SceneView sv){
         Event e = Event.current;
 
-        // Creating the object when clicking or dragging
-        //int layer = ~LayerMask.NameToLayer(layerName);  // the layer that the painted object is on
-
-        if ((e.type == EventType.MouseDrag || e.type == EventType.MouseDown) && e.button ==0 && isPainting){
+        // detecting clicking or dragging
+        if (e.type == EventType.MouseDown && e.button ==0 && isPainting){
             RaycastHit hit;
             Tools.current = Tool.View;
             int layer = 1 << LayerMask.NameToLayer(layerName);
+
+            // create object(s) when raycast hit a ocject with collider
 
             if (Physics.Raycast(HandleUtility.GUIPointToWorldRay(e.mousePosition), out hit, Mathf.Infinity, layer))
             {
                 // if the user does not select any prefab to paint, do nothing; else, paint.
                 try{
-                    // exception will be thrown if the prefab is null
-                    GameObject placedObejct = PrefabUtility.InstantiatePrefab(firstPrefab as GameObject) as GameObject;
-                    placedObejct.transform.position = hit.point;
-                    placedObejct.transform.localScale = new Vector3(1, 1, 1);
+                    // set the created object orientation
+                    Vector3 surfaceDirection = hit.normal;
+                    Quaternion orientation = orientToSurface ? Quaternion.LookRotation(surfaceDirection.normalized) : Quaternion.identity;
+
+                    GameObject placedObject = Instantiate(firstPrefab, hit.point, orientation);
+                    placedObject.transform.localScale = new Vector3(1, 1, 1);
 
                     // change name of the painted prefab
                     if (prefabName.Length != 0)
                     {
-                        placedObejct.name = prefabName;
+                        placedObject.name = prefabName;
                     }
                     // set parent of the painted prefab if it is not null
                     if (parent != null){
-                        placedObejct.transform.parent = parent.transform;
+                        placedObject.transform.parent = parent.transform;
                     }
                     // added undo function to the painting
-                    Undo.RegisterCreatedObjectUndo(placedObejct, "Undo painting");
+                    Undo.RegisterCreatedObjectUndo(placedObject, "Undo painting");
 
                 }catch(Exception){
                     return;
