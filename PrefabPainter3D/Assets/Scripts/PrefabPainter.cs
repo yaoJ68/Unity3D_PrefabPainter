@@ -4,34 +4,46 @@ using UnityEngine;
 using UnityEditor;
 using System;
 
-public class Window : EditorWindow {
+public class PrefabPainter : EditorWindow {
+
+    // preset settings
     private string layerName;
     private string presetName;
     private string groupName;
-    private GameObject parent;
-
     private bool isPainting;
     private bool orientToSurface;
+    private Vector3 scaling;
+    private Vector3 rotation;
+    private GameObject parent;
+
+    // gui settings
+    private Vector2 windowScrollPos;
     private Vector2 presetsScrollPos;
-     
+    private bool showWindow;
+
+
 
     // draw the window
     [MenuItem("Window/PrefabPainter")]
     public static void ShowWindow(){
-        GetWindow<Window>("Prefab Painter");
+        GetWindow<PrefabPainter>("Prefab Painter");
     }
 
     private void OnEnable()
     {
+        scaling = new Vector3(1, 1, 1);
+        rotation = new Vector3(0, 0, 0);
+        showWindow = true;
         layerName = "Default";  // set layer to default on initialization
+        presetName = Settings.GetSelectedName();
         SceneView.onSceneGUIDelegate -= CustomeUpdate;
         SceneView.onSceneGUIDelegate += CustomeUpdate;
     }
 
     private void OnGUI()
     {
+        windowScrollPos = EditorGUILayout.BeginScrollView(windowScrollPos, false, false);   // if the window size is too small, add scroll bar
         Event e = Event.current;
-
         // draw title
         GUILayout.Label("Prefab Painter", Styles.titleStyle);
         GUILayout.Space(20);
@@ -152,7 +164,6 @@ public class Window : EditorWindow {
             }
 
 
-
             // Drag & Drop
             if (e.type == EventType.DragUpdated || e.type == EventType.DragPerform)
             {
@@ -179,9 +190,7 @@ public class Window : EditorWindow {
                 e.Use();
                 Repaint();
             }
-
             GUI.EndScrollView();
-
 
 
             // input field for setting the name of the painted prefab
@@ -193,8 +202,6 @@ public class Window : EditorWindow {
                 layerName = "Default";  // change the layer name to default if user does not type in anything
                 
 
-
-
             //input field for setting parent of the new painted object
             GUILayout.BeginHorizontal();
 
@@ -203,22 +210,41 @@ public class Window : EditorWindow {
 
             GUILayout.EndHorizontal();
 
+           
             // check box for object orientation
             orientToSurface = EditorGUILayout.Toggle("Orient to Surface", orientToSurface);
+
+
+            // foldout field for trasnform information
+            showWindow = EditorGUILayout.Foldout(showWindow, "Transform");
+
+            if (showWindow)
+            {
+                scaling = EditorGUILayout.Vector3Field("Scale", scaling);
+                rotation = EditorGUILayout.Vector3Field("Rotation", rotation);
+
+            }
             GUILayout.Space(5);
 
-
-            // 'paint' button
+            // 'paint' and 'cancel' button
             GUILayout.BeginHorizontal();
-            isPainting = GUILayout.Toggle(isPainting, "Paint", "button");
-            isPainting &= (!GUILayout.Button("Cancel") && (!e.isKey || e.keyCode != KeyCode.Escape));
+
+            GUILayout.FlexibleSpace();
+
+            isPainting = GUILayout.Toggle(isPainting, "Paint", "button", GUILayout.Width(position.width/3));
+            GUILayout.FlexibleSpace();
+            isPainting &= (!GUILayout.Button("Cancel", GUILayout.Width(position.width /3)) && (!e.isKey || e.keyCode != KeyCode.Escape));
+
+            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+
             GUILayout.Space(30);
 
 
 
             // input area for grouping
             EditorGUILayout.LabelField("Grouping Presets", EditorStyles.boldLabel);
+            GUILayout.BeginHorizontal();
             groupName = EditorGUILayout.TextField("Group Name", groupName);
 
             if (string.IsNullOrEmpty(groupName))
@@ -229,7 +255,9 @@ public class Window : EditorWindow {
             {
                 Group();
             }
+            GUILayout.EndHorizontal();
         }
+        EditorGUILayout.EndScrollView();
     }
    
 
@@ -252,7 +280,8 @@ public class Window : EditorWindow {
                 Quaternion orientation = orientToSurface ? surfaceDirection : Quaternion.identity;
 
                 GameObject placedObject = (GameObject)Instantiate(Settings.GetSelectedPreset(), hit.point, orientation);
-                placedObject.transform.localScale = new Vector3(1, 1, 1);
+                placedObject.transform.localScale = scaling;
+                placedObject.transform.eulerAngles = rotation;
 
                 // change name of the painted prefab
                 if (presetName.Length != 0)
