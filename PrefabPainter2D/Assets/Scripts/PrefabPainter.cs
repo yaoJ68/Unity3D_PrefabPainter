@@ -300,14 +300,13 @@ public class PrefabPainter : EditorWindow {
                 {
 
                     // set the created object orientation
-                    Vector3 forward = Vector3.Cross(Vector3.back, hit.normal);
+                    Vector3 forward = Vector3.Cross(Vector3.right, hit.normal);
                     Quaternion surfaceDirection = Quaternion.LookRotation(forward, hit.normal);
                     Quaternion orientation = orientToSurface ? surfaceDirection : Quaternion.identity;
 
                     GameObject placedObject = (GameObject)Instantiate(Settings.GetSelectedPreset(), hit.point, orientation);
                     placedObject.transform.localScale = scaling;
                     placedObject.transform.eulerAngles = rotation;
-                    
 
                     // change name of the painted prefab
                     if (presetName.Length != 0)
