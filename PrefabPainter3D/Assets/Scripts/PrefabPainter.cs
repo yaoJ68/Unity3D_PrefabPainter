@@ -17,11 +17,14 @@ public class PrefabPainter : EditorWindow {
     private Vector3 scaling;
     private Vector3 rotation;
     private GameObject parent;
+    private float spaceBetween;
 
     // gui settings
     private Vector2 windowScrollPos;
     private Vector2 presetsScrollPos;
     private bool showWindow;
+    private Vector3 lastObejctPos;
+    private bool startDrag;
 
 
 
@@ -33,8 +36,8 @@ public class PrefabPainter : EditorWindow {
 
     private void OnEnable()
     {
-        scaling = new Vector3(1, 1, 1);
-        rotation = new Vector3(0, 0, 0);
+        scaling = Vector3.one;
+        rotation = Vector3.zero;
         showWindow = true;
         layerName = "Default";  // set layer to default on initialization
         presetName = Settings.GetSelectedName();
@@ -205,6 +208,7 @@ public class PrefabPainter : EditorWindow {
             }
             GUI.EndScrollView();
 
+
             // reset button
             if (GUILayout.Button("Reset", GUILayout.Width(position.width/5))){
                 layerName = "Default";
@@ -212,11 +216,13 @@ public class PrefabPainter : EditorWindow {
                 orientToSurface = false;
                 scaling = new Vector3(1, 1, 1);
                 rotation = new Vector3(0, 0, 0);
+                spaceBetween = 1;
                 Repaint();
             }
 
             // input field for setting the name of the painted prefab
             presetName = EditorGUILayout.TextField("Preset Name", presetName);
+
 
             // input field for layer name
             layerName = EditorGUILayout.TextField("Collision Layer", layerName);
@@ -236,6 +242,11 @@ public class PrefabPainter : EditorWindow {
             // check box for object orientation
             orientToSurface = EditorGUILayout.Toggle("Orient to Surface", orientToSurface);
 
+            // slider bar to adjuste the space between objects when drag and paint
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Space Between Objects");
+            spaceBetween = EditorGUILayout.Slider(spaceBetween, 1.0f, 100.0f);
+            GUILayout.EndHorizontal();
 
             // foldout field for trasnform information
             showWindow = EditorGUILayout.Foldout(showWindow, "Transform");
@@ -286,66 +297,76 @@ public class PrefabPainter : EditorWindow {
     void CustomeUpdate(UnityEditor.SceneView sv){
         Event e = Event.current;
 
-        // detecting clicking or dragging
-        if (e.type == EventType.MouseDown && e.button ==0 && isPainting){
+        // if mouse up, strop painting and return
+        if (e.type == EventType.MouseUp){
+            startDrag = false;
+            return;
+        }
 
-                RaycastHit hit;
-                Tools.current = Tool.View;
-                int layer = 1 << LayerMask.NameToLayer(layerName);
+        // if clicking or dragging, paint
+        if ((e.type==EventType.MouseDrag || e.type == EventType.MouseDown) && e.button ==0 && isPainting){
 
+            RaycastHit hit;
+            Tools.current = Tool.View;
+            int layer = 1 << LayerMask.NameToLayer(layerName);
+            Vector3 spawnPosition = HandleUtility.GUIPointToWorldRay(e.mousePosition).origin; // initialize the swpwan position as the mouse position
+            Quaternion orientation = Quaternion.identity;
+
+            // if the porject is 3d, change settings when initialize objects
             if (!is2D)
             {
-                // create object(s) when raycast hit a ocject with collider
-                if (Physics.Raycast(HandleUtility.GUIPointToWorldRay(e.mousePosition), out hit, Mathf.Infinity, layer))
-                {
-
-                    // set the created object orientation
-                    Vector3 forward = Vector3.Cross(Vector3.back, hit.normal);
+                if (Physics.Raycast(HandleUtility.GUIPointToWorldRay(e.mousePosition), out hit, Mathf.Infinity, layer)){
+                    Vector3 forward = Vector3.Cross(Vector3.right, hit.normal);
                     Quaternion surfaceDirection = Quaternion.LookRotation(forward, hit.normal);
-                    Quaternion orientation = orientToSurface ? surfaceDirection : Quaternion.identity;
+                    orientation = orientToSurface ? surfaceDirection : Quaternion.identity; //change the quaternion setting when the obejct should be oriented to surface
+                    spawnPosition = hit.point;   // set the position of the object to raycast hit point
 
-                    GameObject placedObject = (GameObject)Instantiate(Settings.GetSelectedPreset(), hit.point, orientation);
-                    placedObject.transform.localScale = scaling;
-                    placedObject.transform.eulerAngles = rotation;
-                    
-
-                    // change name of the painted prefab
-                    if (presetName.Length != 0)
-                    {
-                        placedObject.name = presetName;
-                    }
-                    // set parent of the painted prefab if it is not null
-                    if (parent != null)
-                    {
-                        placedObject.transform.parent = parent.transform;
-                    }
-                    // added undo function to the painting
-                    Undo.RegisterCreatedObjectUndo(placedObject, "Undo painting");
-
-
+                }else{
+                    return; // in 3D mode when not hitting a collider, return 
                 }
-            }else{
-                Vector3 spawnPosition = HandleUtility.GUIPointToWorldRay(e.mousePosition).origin;
-
-                GameObject placedObject = (GameObject)Instantiate(Settings.GetSelectedPreset(),spawnPosition, Quaternion.identity);
-                placedObject.transform.localScale = scaling;
-                placedObject.transform.eulerAngles = rotation;
-
-                // change name of the painted prefab
-                if (presetName.Length != 0)
-                {
-                    placedObject.name = presetName;
-                }
-                // set parent of the painted prefab if it is not null
-                if (parent != null)
-                {
-                    placedObject.transform.parent = parent.transform;
-                }
-                // added undo function to the painting
-                Undo.RegisterCreatedObjectUndo(placedObject, "Undo painting");
-
-
+              
             }
+
+            // rotate the object
+            Quaternion newDirection = Quaternion.Euler(rotation.x, rotation.y, rotation.z);
+            orientation.x += newDirection.x;
+            orientation.y += newDirection.y;
+            orientation.z += newDirection.z;
+
+
+            // if the mouse is dragging, initialize the first object and every other objects after given space
+            if (e.type == EventType.MouseDrag && !startDrag){
+                startDrag = true;
+            }else if (e.type == EventType.MouseDrag){
+                // if the distance between current mouse position and last object position is smaller thant the given space
+                // not paint and return
+                if (Vector3.Distance(spawnPosition, lastObejctPos) < spaceBetween){
+                    return;
+                }
+            }
+
+            GameObject placedObject = (GameObject)Instantiate(Settings.GetSelectedPreset(), spawnPosition, orientation);
+            lastObejctPos = placedObject.transform.position;
+
+            // change size
+            placedObject.transform.localScale = scaling;
+
+           
+            // change name of the painted prefab
+            if (presetName.Length != 0)
+            {
+                placedObject.name = presetName;
+            }
+
+            // set parent of the painted prefab if it is not null
+            if (parent != null)
+            {
+                placedObject.transform.parent = parent.transform;
+            }
+
+            // added undo function to the painting
+            Undo.RegisterCreatedObjectUndo(placedObject, "Undo painting");
+
             e.Use();
         }
 
@@ -357,21 +378,27 @@ public class PrefabPainter : EditorWindow {
     }
 
 
+    // Group obejcts together
     private void Group(){
-        // Group obejcts together
+       
         if (!Selection.activeTransform)
             return;
 
-        // if there is a object with the same name, group under that object; else, create new parent
+        // if there is a object with the same name as the entered, group under this object
+        // else, create a new parent and group under it
         var groupParent = GameObject.Find(groupName);
+
         if (groupParent == null){
+
             groupParent = new GameObject(groupName);
             Undo.RegisterCreatedObjectUndo(groupParent, "Group Selected");
             groupParent.transform.SetParent(Selection.activeTransform.parent, false);
         }
 
-        foreach (var transform in Selection.transforms) 
+        // register undo for grouping a single/ as set of objects
+        foreach (var transform in Selection.transforms) {
             Undo.SetTransformParent(transform, groupParent.transform, "Group Selected");
+        }
 
         Selection.activeGameObject = groupParent;
     }
