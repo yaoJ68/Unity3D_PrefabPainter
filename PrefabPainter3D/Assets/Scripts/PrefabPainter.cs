@@ -171,7 +171,7 @@ public class PrefabPainter : EditorWindow {
                             {
                                 alignment = TextAnchor.MiddleCenter
                             };
-                            EditorGUI.LabelField(iconRect, "Shift+Drag\nRelink", labelStyle);
+                            EditorGUI.LabelField(iconRect, "Image not\navaiable", labelStyle);
                             }
                     }
 
